@@ -295,62 +295,48 @@
                     document.getElementById('account-display').innerText = 'Wallet: Not Connected';
                     document.getElementById('wallet-balance-display').innerText = 'Your Balance: 0 STT';
                 }
-                const contractBalance = await contract.getContractBalance();
-                document.getElementById('contract-balance-display').innerText = `Nuke's Balance: ${ethers.utils.formatEther(contractBalance)} STT`;
+                if (contract) {
+                    const contractBalance = await contract.getContractBalance();
+                    document.getElementById('contract-balance-display').innerText = `Nuke's Balance: ${ethers.utils.formatEther(contractBalance)} STT`;
+                }
             } catch (error) {
                 console.error("Error updating balances:", error);
             }
         };
 
-        // Main connection and initialization logic
-        const init = async () => {
-            if (typeof window.ethereum === 'undefined') {
-                showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
-                return;
-            }
-
-            // Set up account change listener
-            window.ethereum.on('accountsChanged', (accounts) => {
-                if (accounts.length > 0) {
+        const handleAccountChange = (accounts) => {
+            if (accounts.length > 0) {
+                if (!provider) {
                     provider = new ethers.providers.Web3Provider(window.ethereum);
-                    signer = provider.getSigner();
-                    updateBalanceDisplay(accounts[0]);
-                    updateConnectionStatus(true);
-                    document.getElementById('game-controls').classList.remove('hidden');
-                    document.getElementById('connect-wallet-container').classList.add('hidden');
-                } else {
-                    updateConnectionStatus(false);
-                    updateBalanceDisplay(null);
-                    document.getElementById('connect-wallet-container').classList.remove('hidden');
-                    document.getElementById('game-controls').classList.add('hidden');
                 }
-            });
+                signer = provider.getSigner();
+                if (!contract) {
+                    contract = new ethers.Contract(contractAddress, contractABI, signer);
+                }
+                updateBalanceDisplay(accounts[0]);
+                updateConnectionStatus(true);
+                document.getElementById('game-controls').classList.remove('hidden');
+                document.getElementById('connect-wallet-container').classList.add('hidden');
+            } else {
+                updateConnectionStatus(false);
+                updateBalanceDisplay(null);
+                document.getElementById('connect-wallet-container').classList.remove('hidden');
+                document.getElementById('game-controls').classList.add('hidden');
+                provider = null;
+                signer = null;
+                contract = null;
+            }
+        };
 
-            // Set up network change listener
-            window.ethereum.on('chainChanged', (chainId) => {
-                window.location.reload();
-            });
-
-            // Set up listener for the GamePlayed event
-            if (contractAddress !== "0x...YOUR_CONTRACT_ADDRESS...") {
-                provider = new ethers.providers.Web3Provider(window.ethereum);
-                contract = new ethers.Contract(contractAddress, contractABI, provider);
-                contract.on("GamePlayed", (player, playerMove, nukeMove, winner, winnings) => {
-                    console.log("Game result received.");
-                    let resultText;
-                    if (winner == 1) { // Player wins
-                        resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. You win! You received ${ethers.utils.formatEther(winnings)} STT.`;
-                    } else if (winner == 2) { // Nuke wins
-                        resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. Nuke wins! Better luck next time.`;
-                    } else { // Draw
-                        resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. It's a draw! Your stake has been returned.`;
-                    }
-                    showMessage('Game Result', resultText);
-                    // Refresh balances after game ends
-                    if (provider && signer) {
-                         signer.getAddress().then(address => updateBalanceDisplay(address));
-                    }
+        const init = () => {
+            if (typeof window.ethereum !== 'undefined') {
+                window.ethereum.on('accountsChanged', handleAccountChange);
+                window.ethereum.on('chainChanged', (chainId) => {
+                    window.location.reload();
                 });
+                connectWallet();
+            } else {
+                showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
             }
         };
 
@@ -362,15 +348,7 @@
 
             try {
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                if (accounts.length > 0) {
-                     provider = new ethers.providers.Web3Provider(window.ethereum);
-                     signer = provider.getSigner();
-                     contract = new ethers.Contract(contractAddress, contractABI, signer);
-                     updateConnectionStatus(true);
-                     updateBalanceDisplay(accounts[0]);
-                     document.getElementById('game-controls').classList.remove('hidden');
-                     document.getElementById('connect-wallet-container').classList.add('hidden');
-                }
+                handleAccountChange(accounts);
             } catch (error) {
                 console.error("User denied account access or other error:", error);
                 showMessage('Connection Failed', 'Could not connect to wallet. Please try again.');
@@ -418,11 +396,11 @@
                 handlePlay(move);
             }
         });
-
+        
         document.getElementById('connect-wallet-btn').addEventListener('click', connectWallet);
 
         // Initial setup
-        init();
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
