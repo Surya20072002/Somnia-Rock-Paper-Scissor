@@ -258,6 +258,7 @@
         let provider, signer, contract;
         let selectedStake = 0;
         let moveMap = ["Rock ✊", "Paper ✋", "Scissors ✌️"];
+        let isConnecting = false;
 
         // Utility functions for UI
         const showMessage = (title, body) => {
@@ -304,54 +305,41 @@
             }
         };
 
-        const handleAccountChange = (accounts) => {
-            if (accounts.length > 0) {
-                if (!provider) {
-                    provider = new ethers.providers.Web3Provider(window.ethereum);
-                }
+        const handleConnected = async (accounts) => {
+             if (accounts.length > 0) {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
                 signer = provider.getSigner();
-                if (!contract) {
-                    contract = new ethers.Contract(contractAddress, contractABI, signer);
-                }
-                updateBalanceDisplay(accounts[0]);
+                contract = new ethers.Contract(contractAddress, contractABI, signer);
                 updateConnectionStatus(true);
+                updateBalanceDisplay(accounts[0]);
                 document.getElementById('game-controls').classList.remove('hidden');
                 document.getElementById('connect-wallet-container').classList.add('hidden');
+                isConnecting = false;
             } else {
                 updateConnectionStatus(false);
                 updateBalanceDisplay(null);
                 document.getElementById('connect-wallet-container').classList.remove('hidden');
                 document.getElementById('game-controls').classList.add('hidden');
-                provider = null;
-                signer = null;
-                contract = null;
+                isConnecting = false;
             }
-        };
-
-        const init = () => {
-            if (typeof window.ethereum !== 'undefined') {
-                window.ethereum.on('accountsChanged', handleAccountChange);
-                window.ethereum.on('chainChanged', (chainId) => {
-                    window.location.reload();
-                });
-                connectWallet();
-            } else {
-                showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
-            }
-        };
+        }
 
         const connectWallet = async () => {
-            if (typeof window.ethereum === 'undefined') {
+             if (isConnecting) return;
+
+             if (typeof window.ethereum === 'undefined') {
                 showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
                 return;
             }
 
+            isConnecting = true;
             try {
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                handleAccountChange(accounts);
+                handleConnected(accounts);
             } catch (error) {
                 console.error("User denied account access or other error:", error);
                 showMessage('Connection Failed', 'Could not connect to wallet. Please try again.');
+                isConnecting = false;
             }
         };
 
@@ -396,10 +384,46 @@
                 handlePlay(move);
             }
         });
-        
+
         document.getElementById('connect-wallet-btn').addEventListener('click', connectWallet);
 
         // Initial setup
+        const init = async () => {
+            if (typeof window.ethereum !== 'undefined') {
+                window.ethereum.on('accountsChanged', (accounts) => {
+                    handleConnected(accounts);
+                });
+                window.ethereum.on('chainChanged', (chainId) => {
+                    window.location.reload();
+                });
+
+                const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                handleConnected(accounts);
+
+                if (contractAddress !== "0x...YOUR_CONTRACT_ADDRESS...") {
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    contract = new ethers.Contract(contractAddress, contractABI, provider);
+                    contract.on("GamePlayed", (player, playerMove, nukeMove, winner, winnings) => {
+                        console.log("Game result received.");
+                        let resultText;
+                        if (winner == 1) {
+                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. You win! You received ${ethers.utils.formatEther(winnings)} STT.`;
+                        } else if (winner == 2) {
+                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. Nuke wins! Better luck next time.`;
+                        } else {
+                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. It's a draw! Your stake has been returned.`;
+                        }
+                        showMessage('Game Result', resultText);
+                        if (provider && signer) {
+                            signer.getAddress().then(address => updateBalanceDisplay(address));
+                        }
+                    });
+                }
+            } else {
+                updateConnectionStatus(false);
+                showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
+            }
+        }
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
