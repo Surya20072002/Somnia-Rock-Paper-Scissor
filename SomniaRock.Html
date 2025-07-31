@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>On-Chain Rock-Paper-Scissors vs Nuke</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #1a1a2e; color: #e9e9e9; }
+        .container { max-width: 900px; }
+        .btn-move { transition: all 0.2s ease-in-out; }
+        .btn-move:hover { transform: translateY(-3px); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal { backdrop-filter: blur(5px); background-color: rgba(0, 0, 0, 0.6); }
+        .modal-content { animation: fadeInScale 0.3s ease-out forwards; }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-[#1a1a2e] text-[#e9e9e9] min-h-screen flex items-center justify-center p-4">
+
+    <!-- Main Game Container -->
+    <div class="container mx-auto p-8 bg-[#2c2c54] rounded-xl shadow-lg border border-[#4a4a75]">
+        <h1 class="text-4xl font-bold text-center text-[#ffc600] mb-6">Rock-Paper-Scissors vs Nuke</h1>
+        <p class="text-center text-gray-300 mb-8">Play against Nuke on the Somnia Network! The winner takes all.</p>
+
+        <!-- Player Info and Network Status -->
+        <div class="flex flex-col md:flex-row items-center justify-between mb-8 bg-[#3d3d6b] p-4 rounded-lg">
+            <div id="status-display" class="flex items-center space-x-2">
+                <span id="connection-status-icon" class="h-4 w-4 bg-red-500 rounded-full"></span>
+                <span id="connection-status-text" class="text-sm">Disconnected</span>
+            </div>
+            <div id="balance-info" class="mt-4 md:mt-0">
+                <p id="account-display" class="text-sm text-gray-400 truncate">Wallet: Not Connected</p>
+                <p id="wallet-balance-display" class="text-sm text-gray-400">Your Balance: 0 STT</p>
+                <p id="contract-balance-display" class="text-sm text-gray-400">Nuke's Balance: 0 STT</p>
+            </div>
+        </div>
+
+        <!-- Game Interface -->
+        <div id="game-container" class="space-y-8">
+            <!-- Game Section -->
+            <div class="bg-[#3d3d6b] p-6 rounded-lg">
+                <h2 class="text-2xl font-semibold mb-4 text-[#ffc600]">Choose your move and stake</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block mb-2 text-sm text-gray-400">Choose a stake amount:</label>
+                        <div class="flex flex-wrap gap-2">
+                            <button class="btn-stake px-4 py-2 bg-[#4a4a75] rounded-lg hover:bg-[#5c5c8a] transition-colors" data-value="0.01">0.01 STT</button>
+                            <button class="btn-stake px-4 py-2 bg-[#4a4a75] rounded-lg hover:bg-[#5c5c8a] transition-colors" data-value="0.05">0.05 STT</button>
+                            <button class="btn-stake px-4 py-2 bg-[#4a4a75] rounded-lg hover:bg-[#5c5c8a] transition-colors" data-value="0.1">0.1 STT</button>
+                            <button class="btn-stake px-4 py-2 bg-[#4a4a75] rounded-lg hover:bg-[#5c5c8a] transition-colors" data-value="1">1 STT</button>
+                            <button class="btn-stake px-4 py-2 bg-[#4a4a75] rounded-lg hover:bg-[#5c5c8a] transition-colors" data-value="10">10 STT</button>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <input type="number" id="stake-input" placeholder="Or enter custom stake" class="flex-1 p-3 rounded-lg bg-[#4a4a75] border border-[#5c5c8a] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#ffc600]">
+                    </div>
+                </div>
+
+                <div class="mt-8">
+                    <label class="block mb-2 text-sm text-gray-400">Choose your move:</label>
+                    <div id="move-options" class="flex justify-around space-x-4">
+                        <button data-move="0" class="btn-move p-4 bg-[#4a4a75] rounded-xl text-4xl hover:bg-[#5c5c8a]">✊</button>
+                        <button data-move="1" class="btn-move p-4 bg-[#4a4a75] rounded-xl text-4xl hover:bg-[#5c5c8a]">✋</button>
+                        <button data-move="2" class="btn-move p-4 bg-[#4a4a75] rounded-xl text-4xl hover:bg-[#5c5c8a]">✌️</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for displaying messages (replaces alert) -->
+    <div id="message-modal" class="modal fixed inset-0 flex items-center justify-center p-4 hidden">
+        <div class="modal-content bg-[#2c2c54] p-8 rounded-xl shadow-2xl w-full max-w-md border border-[#4a4a75] text-center">
+            <h3 id="message-modal-title" class="text-2xl font-bold mb-4 text-[#ffc600]"></h3>
+            <p id="message-modal-body" class="mb-6 text-gray-300"></p>
+            <button id="message-modal-close" class="px-6 py-3 bg-[#ffc600] text-[#1a1a2e] font-bold rounded-lg hover:bg-yellow-400 transition-colors">Close</button>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        // Smart Contract ABI and Address
+        const contractABI = [
+            "event GamePlayed(address indexed player, uint256 playerMove, uint256 nukeMove, uint256 winner, uint256 winnings)",
+            "function playGame(uint256 _playerMove) payable",
+            "function getContractBalance() view returns (uint256)"
+        ];
+        
+        // PASTE YOUR DEPLOYED CONTRACT ADDRESS HERE
+        const contractAddress = "0x...YOUR_CONTRACT_ADDRESS..."; 
+
+        let provider, signer, contract;
+        let selectedStake = 0;
+        let moveMap = ["Rock ✊", "Paper ✋", "Scissors ✌️"];
+        
+        // Utility functions for UI
+        const showMessage = (title, body) => {
+            document.getElementById('message-modal-title').innerText = title;
+            document.getElementById('message-modal-body').innerText = body;
+            document.getElementById('message-modal').classList.remove('hidden');
+        };
+
+        const hideMessage = () => {
+            document.getElementById('message-modal').classList.add('hidden');
+        };
+        document.getElementById('message-modal-close').addEventListener('click', hideMessage);
+
+        const updateConnectionStatus = (isConnected) => {
+            const statusIcon = document.getElementById('connection-status-icon');
+            const statusText = document.getElementById('connection-status-text');
+            if (isConnected) {
+                statusIcon.classList.remove('bg-red-500');
+                statusIcon.classList.add('bg-green-500');
+                statusText.innerText = 'Connected';
+            } else {
+                statusIcon.classList.remove('bg-green-500');
+                statusIcon.classList.add('bg-red-500');
+                statusText.innerText = 'Disconnected';
+            }
+        };
+
+        const updateBalanceDisplay = async (address) => {
+            try {
+                if (address) {
+                    const balance = await provider.getBalance(address);
+                    document.getElementById('account-display').innerText = `Wallet: ${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+                    document.getElementById('wallet-balance-display').innerText = `Your Balance: ${ethers.utils.formatEther(balance)} STT`;
+                } else {
+                    document.getElementById('account-display').innerText = 'Wallet: Not Connected';
+                    document.getElementById('wallet-balance-display').innerText = 'Your Balance: 0 STT';
+                }
+                const contractBalance = await contract.getContractBalance();
+                document.getElementById('contract-balance-display').innerText = `Nuke's Balance: ${ethers.utils.formatEther(contractBalance)} STT`;
+            } catch (error) {
+                console.error("Error updating balances:", error);
+            }
+        };
+
+        // Main connection and initialization logic
+        const init = async () => {
+            if (typeof window.ethereum !== 'undefined') {
+                try {
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                    contract = new ethers.Contract(contractAddress, contractABI, signer);
+                    const address = await signer.getAddress();
+                    updateConnectionStatus(true);
+                    updateBalanceDisplay(address);
+                    
+                    window.ethereum.on('accountsChanged', (accounts) => {
+                        if (accounts.length > 0) {
+                            signer = provider.getSigner();
+                            updateBalanceDisplay(accounts[0]);
+                        } else {
+                            updateConnectionStatus(false);
+                            updateBalanceDisplay(null);
+                        }
+                    });
+
+                    // Set up listener for the GamePlayed event
+                    contract.on("GamePlayed", (player, playerMove, nukeMove, winner, winnings) => {
+                        console.log("Game result received.");
+                        let resultText;
+                        if (winner == 1) { // Player wins
+                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. You win! You received ${ethers.utils.formatEther(winnings)} STT.`;
+                        } else if (winner == 2) { // Nuke wins
+                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. Nuke wins! Better luck next time.`;
+                        } else { // Draw
+                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. It's a draw! Your stake has been returned.`;
+                        }
+                        showMessage('Game Result', resultText);
+                        updateBalanceDisplay(player); // Refresh balances after game ends
+                    });
+
+                } catch (error) {
+                    console.error("User denied account access or other error:", error);
+                    showMessage('Connection Error', 'Please connect your wallet to the Somnia Network to play the game.');
+                    updateConnectionStatus(false);
+                }
+            } else {
+                updateConnectionStatus(false);
+                showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
+            }
+        };
+
+        // --- Game Logic Functions ---
+        const handlePlay = async (move) => {
+            if (!signer) {
+                showMessage('Wallet Required', 'Please connect your wallet to play.');
+                return;
+            }
+
+            const stake = document.getElementById('stake-input').value || selectedStake;
+            if (stake <= 0) {
+                showMessage('Invalid Stake', 'Please enter a valid stake amount.');
+                return;
+            }
+
+            try {
+                const stakeWei = ethers.utils.parseEther(stake.toString());
+                const tx = await contract.playGame(move, { value: stakeWei });
+                showMessage('Playing Game...', `Transaction sent. Awaiting result. Transaction Hash: ${tx.hash}`);
+                await tx.wait();
+            } catch (error) {
+                console.error("Error playing game:", error);
+                showMessage('Transaction Failed', 'Could not play the game. Check your wallet and the network status.');
+            }
+        };
+
+        // --- Event Listeners ---
+        document.querySelectorAll('.btn-stake').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const stakeInput = document.getElementById('stake-input');
+                document.querySelectorAll('.btn-stake').forEach(b => b.classList.remove('bg-yellow-400'));
+                event.target.classList.add('bg-yellow-400');
+                selectedStake = parseFloat(event.target.dataset.value);
+                stakeInput.value = selectedStake;
+            });
+        });
+
+        document.getElementById('move-options').addEventListener('click', (event) => {
+            if (event.target.closest('button')) {
+                const move = event.target.closest('button').dataset.move;
+                handlePlay(move);
+            }
+        });
+
+        // Initial setup
+        init();
+    </script>
+</body>
+</html>
