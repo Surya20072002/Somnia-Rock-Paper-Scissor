@@ -252,13 +252,13 @@
                 "type": "function"
             }
         ];
-        
-        const contractAddress = "0x68e777128a44fff12504b184558eE9363583D168"; 
+
+        const contractAddress = "0x68e777128a44fff12504b184558eE9363583D168";
 
         let provider, signer, contract;
         let selectedStake = 0;
         let moveMap = ["Rock ✊", "Paper ✋", "Scissors ✌️"];
-        
+
         // Utility functions for UI
         const showMessage = (title, body) => {
             document.getElementById('message-modal-title').innerText = title;
@@ -304,67 +304,62 @@
 
         // Main connection and initialization logic
         const init = async () => {
-            if (typeof window.ethereum !== 'undefined') {
-                try {
-                    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                    if (accounts.length > 0) {
-                        provider = new ethers.providers.Web3Provider(window.ethereum);
-                        signer = provider.getSigner();
-                        contract = new ethers.Contract(contractAddress, contractABI, signer);
-                        const address = await signer.getAddress();
-                        updateConnectionStatus(true);
-                        updateBalanceDisplay(address);
-                        document.getElementById('game-controls').classList.remove('hidden');
-                        document.getElementById('connect-wallet-container').classList.add('hidden');
-                    } else {
-                        updateConnectionStatus(false);
-                        document.getElementById('connect-wallet-container').classList.remove('hidden');
-                        document.getElementById('game-controls').classList.add('hidden');
-                    }
-                    
-                    window.ethereum.on('accountsChanged', (accounts) => {
-                        if (accounts.length > 0) {
-                            provider = new ethers.providers.Web3Provider(window.ethereum);
-                            signer = provider.getSigner();
-                            updateBalanceDisplay(accounts[0]);
-                            updateConnectionStatus(true);
-                            document.getElementById('game-controls').classList.remove('hidden');
-                            document.getElementById('connect-wallet-container').classList.add('hidden');
-                        } else {
-                            updateConnectionStatus(false);
-                            updateBalanceDisplay(null);
-                            document.getElementById('connect-wallet-container').classList.remove('hidden');
-                            document.getElementById('game-controls').classList.add('hidden');
-                        }
-                    });
-
-                    // Set up listener for the GamePlayed event
-                    contract.on("GamePlayed", (player, playerMove, nukeMove, winner, winnings) => {
-                        console.log("Game result received.");
-                        let resultText;
-                        if (winner == 1) { // Player wins
-                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. You win! You received ${ethers.utils.formatEther(winnings)} STT.`;
-                        } else if (winner == 2) { // Nuke wins
-                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. Nuke wins! Better luck next time.`;
-                        } else { // Draw
-                            resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. It's a draw! Your stake has been returned.`;
-                        }
-                        showMessage('Game Result', resultText);
-                        updateBalanceDisplay(player); // Refresh balances after game ends
-                    });
-
-                } catch (error) {
-                    console.error("Error during initialization:", error);
-                    showMessage('Connection Error', 'Please connect your wallet to the Somnia Network to play the game.');
-                    updateConnectionStatus(false);
-                }
-            } else {
-                updateConnectionStatus(false);
+            if (typeof window.ethereum === 'undefined') {
                 showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
+                return;
+            }
+
+            // Set up account change listener
+            window.ethereum.on('accountsChanged', (accounts) => {
+                if (accounts.length > 0) {
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                    updateBalanceDisplay(accounts[0]);
+                    updateConnectionStatus(true);
+                    document.getElementById('game-controls').classList.remove('hidden');
+                    document.getElementById('connect-wallet-container').classList.add('hidden');
+                } else {
+                    updateConnectionStatus(false);
+                    updateBalanceDisplay(null);
+                    document.getElementById('connect-wallet-container').classList.remove('hidden');
+                    document.getElementById('game-controls').classList.add('hidden');
+                }
+            });
+
+            // Set up network change listener
+            window.ethereum.on('chainChanged', (chainId) => {
+                window.location.reload();
+            });
+
+            // Set up listener for the GamePlayed event
+            if (contractAddress !== "0x...YOUR_CONTRACT_ADDRESS...") {
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                contract = new ethers.Contract(contractAddress, contractABI, provider);
+                contract.on("GamePlayed", (player, playerMove, nukeMove, winner, winnings) => {
+                    console.log("Game result received.");
+                    let resultText;
+                    if (winner == 1) { // Player wins
+                        resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. You win! You received ${ethers.utils.formatEther(winnings)} STT.`;
+                    } else if (winner == 2) { // Nuke wins
+                        resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. Nuke wins! Better luck next time.`;
+                    } else { // Draw
+                        resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. It's a draw! Your stake has been returned.`;
+                    }
+                    showMessage('Game Result', resultText);
+                    // Refresh balances after game ends
+                    if (provider && signer) {
+                         signer.getAddress().then(address => updateBalanceDisplay(address));
+                    }
+                });
             }
         };
 
         const connectWallet = async () => {
+            if (typeof window.ethereum === 'undefined') {
+                showMessage('Wallet Not Found', 'Please install a Web3 wallet like MetaMask to play this game.');
+                return;
+            }
+
             try {
                 const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
                 if (accounts.length > 0) {
@@ -423,7 +418,7 @@
                 handlePlay(move);
             }
         });
-        
+
         document.getElementById('connect-wallet-btn').addEventListener('click', connectWallet);
 
         // Initial setup
