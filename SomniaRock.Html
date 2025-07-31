@@ -245,16 +245,9 @@
         let moveMap = ["Rock ✊", "Paper ✋", "Scissors ✌️"];
 
         // Utility functions for UI
-        const showMessage = (title, body) => {
-            document.getElementById('message-modal-title').innerText = title;
-            document.getElementById('message-modal-body').innerText = body;
-            document.getElementById('message-modal').classList.remove('hidden');
+        const logToUI = (message) => {
+            console.log(message);
         };
-
-        const hideMessage = () => {
-            document.getElementById('message-modal').classList.add('hidden');
-        };
-        document.getElementById('message-modal-close').addEventListener('click', hideMessage);
 
         const updateConnectionStatus = (isConnected) => {
             const statusIcon = document.getElementById('connection-status-icon');
@@ -311,7 +304,7 @@
 
         const connectWallet = async () => {
              if (typeof window.ethereum === 'undefined') {
-                document.getElementById('connect-wallet-container').innerHTML = `<h2 class="text-xl font-semibold mb-4 text-red-500">Wallet Not Found</h2><p class="text-gray-300">Please install a Web3 wallet like MetaMask to play this game.</p>`;
+                logToUI('Wallet Not Found: Please install a Web3 wallet like MetaMask to play this game.');
                 return;
             }
 
@@ -320,8 +313,7 @@
                 handleConnected(accounts);
             } catch (error) {
                 console.error("User denied account access or other error:", error);
-                document.getElementById('connect-wallet-container').innerHTML = `<h2 class="text-xl font-semibold mb-4 text-red-500">Connection Failed</h2><p class="text-gray-300">Could not connect to wallet. Please try again.</p><button id="connect-wallet-btn" class="mt-4 w-full px-6 py-3 bg-[#ffc600] text-[#1a1a2e] font-bold rounded-lg hover:bg-yellow-400 transition-colors">Connect Wallet</button>`;
-                document.getElementById('connect-wallet-btn').addEventListener('click', connectWallet);
+                logToUI('Connection Failed: Could not connect to wallet. Please try again.');
             }
         };
 
@@ -332,16 +324,26 @@
                     window.location.reload();
                 });
 
-                // Check for existing connection first
+                document.getElementById('connect-wallet-btn').addEventListener('click', connectWallet);
+                document.querySelectorAll('.btn-stake').forEach(button => {
+                    button.addEventListener('click', (event) => {
+                        const stakeInput = document.getElementById('stake-input');
+                        document.querySelectorAll('.btn-stake').forEach(b => b.classList.remove('bg-yellow-400'));
+                        event.target.classList.add('bg-yellow-400');
+                        selectedStake = parseFloat(event.target.dataset.value);
+                        stakeInput.value = selectedStake;
+                    });
+                });
+                document.getElementById('move-options').addEventListener('click', (event) => {
+                    if (event.target.closest('button')) {
+                        const move = event.target.closest('button').dataset.move;
+                        handlePlay(move);
+                    }
+                });
+
                 const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-                if (accounts.length > 0) {
-                    handleConnected(accounts);
-                } else {
-                    // Show connect button if no existing connection
-                    document.getElementById('connect-wallet-container').classList.remove('hidden');
-                }
-                
-                // Set up listener for the GamePlayed event
+                handleConnected(accounts);
+
                 if (contractAddress !== "0x...YOUR_CONTRACT_ADDRESS...") {
                     provider = new ethers.providers.Web3Provider(window.ethereum);
                     contract = new ethers.Contract(contractAddress, contractABI, provider);
@@ -355,61 +357,42 @@
                         } else {
                             resultText = `You played ${moveMap[playerMove]}, Nuke played ${moveMap[nukeMove]}. It's a draw! Your stake has been returned.`;
                         }
-                        console.log(resultText); // Log to console instead of modal
+                        logToUI(resultText);
                         if (provider && signer) {
                             signer.getAddress().then(address => updateBalanceDisplay(address));
                         }
                     });
                 }
             } else {
+                updateConnectionStatus(false);
                 document.getElementById('connect-wallet-container').innerHTML = `<h2 class="text-xl font-semibold mb-4 text-red-500">Wallet Not Found</h2><p class="text-gray-300">Please install a Web3 wallet like MetaMask to play this game.</p>`;
             }
-        }
+        };
 
         // --- Game Logic Functions ---
         const handlePlay = async (move) => {
             if (!signer) {
-                console.log("Wallet Required: Please connect your wallet to play.");
+                logToUI("Wallet Required: Please connect your wallet to play.");
                 return;
             }
 
             const stake = document.getElementById('stake-input').value || selectedStake;
             if (stake <= 0) {
-                console.log("Invalid Stake: Please enter a valid stake amount.");
+                logToUI("Invalid Stake: Please enter a valid stake amount.");
                 return;
             }
 
             try {
                 const stakeWei = ethers.utils.parseEther(stake.toString());
                 const tx = await contract.playGame(move, { value: stakeWei });
-                console.log("Playing Game... Transaction sent:", tx.hash);
+                logToUI("Playing Game... Transaction sent:", tx.hash);
                 await tx.wait();
             } catch (error) {
                 console.error("Error playing game:", error);
-                console.log("Transaction Failed: Could not play the game. Check your wallet and the network status.");
+                logToUI("Transaction Failed: Could not play the game. Check your wallet and the network status.");
             }
         };
 
-        // --- Event Listeners ---
-        document.querySelectorAll('.btn-stake').forEach(button => {
-            button.addEventListener('click', (event) => {
-                const stakeInput = document.getElementById('stake-input');
-                document.querySelectorAll('.btn-stake').forEach(b => b.classList.remove('bg-yellow-400'));
-                event.target.classList.add('bg-yellow-400');
-                selectedStake = parseFloat(event.target.dataset.value);
-                stakeInput.value = selectedStake;
-            });
-        });
-
-        document.getElementById('move-options').addEventListener('click', (event) => {
-            if (event.target.closest('button')) {
-                const move = event.target.closest('button').dataset.move;
-                handlePlay(move);
-            }
-        });
-
-        document.getElementById('connect-wallet-btn').addEventListener('click', connectWallet);
-        
         document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
