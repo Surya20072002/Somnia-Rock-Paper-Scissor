@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>dApp - Rock, Paper, Scissors</title>
-    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="application/javascript"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js" xintegrity="sha512-FDc6O9mcG4fYpNBvoO3MOKCzkDy3I2iPS2LSS3A2S+e3mD9xYdFHiX9QG3b/i79s9s5gI9v2Uq3h7s3G7A/eA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -133,6 +133,15 @@
                     try {
                         provider = new ethers.providers.Web3Provider(window.ethereum);
                         await provider.send("eth_requestAccounts", []);
+
+                        // Check if the user is on the Somnia Testnet
+                        const network = await provider.getNetwork();
+                        if (network.chainId !== 50312) {
+                            resultDisplay.textContent = 'Please switch to the Somnia Testnet in MetaMask!';
+                            // Optional: Add logic here to prompt the user to switch networks
+                            return;
+                        }
+
                         signer = provider.getSigner();
                         contract = new ethers.Contract(contractAddress, contractABI, signer);
 
@@ -156,7 +165,7 @@
                         resultDisplay.textContent = 'Wallet connection failed. Check console.';
                     }
                 } else {
-                    resultDisplay.textContent = 'Please install MetaMask and add the Somnia Testnet!';
+                    resultDisplay.textContent = 'Please install MetaMask!';
                 }
             };
 
